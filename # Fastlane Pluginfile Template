@@ -1,0 +1,30 @@
+# Fastlane Pluginfile Template
+#
+# This file defines the fastlane plugins required for your project
+# Ensure this file is checked in to source control!
+
+# Core Flutter plugin for building Flutter apps
+gem 'fastlane-plugin-flutter'
+
+# Firebase App Distribution plugin for distributing apps to testers
+gem 'fastlane-plugin-firebase_app_distribution'
+
+# Uncomment additional plugins as needed:
+
+# For uploading to TestFlight/App Store
+# gem 'fastlane-plugin-appstore'
+
+# For Slack notifications
+# gem 'fastlane-plugin-slack'
+
+# For versioning
+# gem 'fastlane-plugin-versioning'
+
+# For code signing
+# gem 'fastlane-plugin-automatic_code_signing'
+
+# For HockeyApp distribution (deprecated, use Firebase instead)
+# gem 'fastlane-plugin-hockey'
+
+# For managing certificates and provisioning profiles
+# gem 'fastlane-plugin-sigh'

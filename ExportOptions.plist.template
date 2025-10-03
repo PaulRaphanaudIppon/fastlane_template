@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 
+	EXPORT OPTIONS TEMPLATE FOR iOS APPS
+	
+	This template provides configuration for different distribution methods.
+	Copy this file and customize it for each environment/scheme.
+	
+	DISTRIBUTION METHODS:
+	- app-store: For App Store distribution
+	- enterprise: For enterprise/in-house distribution
+	- ad-hoc: For ad-hoc distribution (limited devices)
+	- development: For development/testing
+	-->
+	
+	<!-- REQUIRED: Distribution method -->
+	<!-- Options: app-store, enterprise, ad-hoc, development -->
+	<key>method</key>
+	<string>enterprise</string>
+	
+	<!-- REQUIRED: Team ID from Apple Developer Account -->
+	<key>teamID</key>
+	<string>TEAM123456</string>
+	
+	<!-- REQUIRED: Provisioning profiles mapping -->
+	<!-- Format: Bundle Identifier -> Provisioning Profile Name -->
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.yourcompany.yourapp</key>
+		<string>YourApp Enterprise Distribution</string>
+		<!-- Add additional bundle IDs if you have extensions or watch apps -->
+		<!-- 
+		<key>com.yourcompany.yourapp.extension</key>
+		<string>YourApp Extension Enterprise</string>
+		<key>com.yourcompany.yourapp.watchkitapp</key>
+		<string>YourApp WatchKit Enterprise</string>
+		-->
+	</dict>
+	
+	<!-- OPTIONAL: Compile bitcode (recommended for App Store) -->
+	<key>compileBitcode</key>
+	<true/>
+	
+	<!-- OPTIONAL: Upload symbols to Apple (recommended for crash reporting) -->
+	<key>uploadSymbols</key>
+	<true/>
+	
+	<!-- OPTIONAL: Upload bitcode to Apple (App Store only) -->
+	<key>uploadBitcode</key>
+	<false/>
+	
+	<!-- OPTIONAL: Strip Swift symbols (can reduce app size) -->
+	<key>stripSwiftSymbols</key>
+	<true/>
+	
+	<!-- OPTIONAL: Thinning for specific devices -->
+	<!-- Options: <none>, <thin-for-all-supported-variants>, or specific device like "iPhone7,1" -->
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+	
+	<!-- OPTIONAL: Embed on-demand resources -->
+	<key>embedOnDemandResourcesAssetPacksInBundle</key>
+	<false/>
+	
+	<!-- OPTIONAL: Manifest configuration (for enterprise/ad-hoc distribution) -->
+	<key>manifest</key>
+	<dict>
+		<key>appURL</key>
+		<string>https://yourcompany.com/apps/yourapp.ipa</string>
+		<key>displayImageURL</key>
+		<string>https://yourcompany.com/apps/icon-57.png</string>
+		<key>fullSizeImageURL</key>
+		<string>https://yourcompany.com/apps/icon-512.png</string>
+	</dict>
+	
+	<!-- OPTIONAL: Signing style (automatic or manual) -->
+	<key>signingStyle</key>
+	<string>manual</string>
+	
+	<!-- OPTIONAL: Signing certificate (manual signing only) -->
+	<!-- Use certificate name from Keychain -->
+	<key>signingCertificate</key>
+	<string>iPhone Distribution</string>
+	
+	<!-- OPTIONAL: Installation URL for enterprise distribution -->
+	<key>installURL</key>
+	<string>https://yourcompany.com/apps/install.html</string>
+	
+</dict>
+</plist>

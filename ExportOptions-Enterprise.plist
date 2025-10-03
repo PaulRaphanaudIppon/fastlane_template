@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- ENTERPRISE DISTRIBUTION -->
+	<key>method</key>
+	<string>enterprise</string>
+	
+	<key>teamID</key>
+	<string>TEAM123456</string>
+	
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.yourcompany.yourapp</key>
+		<string>YourApp Enterprise Distribution</string>
+	</dict>
+	
+	<!-- Enterprise recommended settings -->
+	<key>compileBitcode</key>
+	<true/>
+	
+	<key>uploadSymbols</key>
+	<false/>
+	
+	<key>uploadBitcode</key>
+	<false/>
+	
+	<key>stripSwiftSymbols</key>
+	<true/>
+	
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+	
+	<key>signingStyle</key>
+	<string>manual</string>
+	
+	<key>signingCertificate</key>
+	<string>iPhone Distribution</string>
+	
+	<!-- Enterprise distribution manifest -->
+	<key>manifest</key>
+	<dict>
+		<key>appURL</key>
+		<string>https://yourcompany.com/apps/yourapp.ipa</string>
+		<key>displayImageURL</key>
+		<string>https://yourcompany.com/apps/icon-57.png</string>
+		<key>fullSizeImageURL</key>
+		<string>https://yourcompany.com/apps/icon-512.png</string>
+	</dict>
+	
+</dict>
+</plist>

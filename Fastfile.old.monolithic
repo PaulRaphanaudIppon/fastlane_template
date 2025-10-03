@@ -1,0 +1,888 @@
+fastlane_require 'dotenv'
+
+# ============================================================================
+# FASTLANE TEMPLATE FOR FLUTTER APPS
+# ============================================================================
+# This template is based on the POD Mobile Fastfile structure
+# 
+# FEATURES:
+# - Multi-environment deployment (int, qa, uat, mco, ppr, prod)
+# - Multi-platform support (iOS, Android, both)
+# - Firebase App Distribution integration
+# - Certificate and provisioning profile validation
+# - Comprehensive logging and recap system
+# - Flutter version management with FVM
+# - Automated changelog generation
+# ============================================================================
+
+# ============================================================================
+# RECAP LOGGING SYSTEM
+# ============================================================================
+
+# Global array to store recap messages
+$recap_messages = []
+
+# Add a message to the recap with timestamp and optional category
+def add_to_recap(message, category = "INFO")
+  timestamp = Time.now.strftime("%H:%M:%S")
+  formatted_message = "[#{timestamp}] [#{category}] #{message}"
+  $recap_messages << formatted_message
+  
+  # Also log to console immediately
+  case category
+  when "SUCCESS"
+    UI.success(message)
+  when "WARNING"
+    UI.important(message.yellow)
+  when "ERROR"
+    UI.error(message.red)
+  else
+    UI.message(message)
+  end
+end
+
+# Display the complete recap at the end
+def display_recap
+  return if $recap_messages.empty?
+  
+  UI.header("📋 DEPLOYMENT RECAP")
+  UI.message("═" * 80)
+  
+  $recap_messages.each do |message|
+    UI.message(message)
+  end
+  
+  UI.message("═" * 80)
+  UI.message("📝 Total events: #{$recap_messages.count}")
+  
+  # Count different categories
+  success_count = $recap_messages.count { |msg| msg.include?("[SUCCESS]") }
+  warning_count = $recap_messages.count { |msg| msg.include?("[WARNING]") }
+  error_count = $recap_messages.count { |msg| msg.include?("[ERROR]") }
+  
+  if success_count > 0
+    UI.message("✅ Successful operations: #{success_count}")
+  end
+  if warning_count > 0
+    UI.message("⚠️  Warnings: #{warning_count}")
+  end
+  if error_count > 0
+    UI.message("❌ Errors: #{error_count}")
+  end
+  
+  UI.message("═" * 80)
+end
+
+# Clear recap messages (useful for multiple runs)
+def clear_recap
+  $recap_messages.clear
+end
+
+# ============================================================================
+# SETUP AND CONFIGURATION
+# ============================================================================
+
+before_all do
+  # Clear any previous recap messages
+  clear_recap
+  
+  secretFile = '.env.secret'
+
+  if (!File.exist?(secretFile)) then
+    raise "Secret file doesn't exists at #{File.expand_path(secretFile)}"
+  end
+
+  Dotenv.overload secretFile
+end
+
+default_platform(:android)
+
+# ============================================================================
+# MAIN DEPLOYMENT LANE
+# ============================================================================
+
+desc "Deploy app to Firebase App Distribution"
+desc "Parameters:"
+desc "- env: Environment (int, qa, uat, mco, ppr, prod) - REQUIRED"
+desc "- target: Platform target (ios, android, both) - OPTIONAL (default: both)"
+desc "- fvm: Choose the fvm version to use (3.24.5, 3.24.6, 3.24.7) - OPTIONAL (default: 3.24.5)"
+desc "- use_match: Use match for certificate management instead of manual verification - OPTIONAL (default: false)"
+lane :deployment do |options|
+  begin
+    # Clear recap at start of deployment
+    clear_recap
+    
+    # Display VPN warning
+    add_to_recap("⚠️ BE CAREFUL, YOU NEED TO BE SIGNED OFF COMPANY'S VPN OR THE DEPLOYMENT USING THIS TOOL WILL NOT WORK ⚠️", "WARNING")
+    add_to_recap("📁 Current directory: #{Dir.pwd}")
+    
+    # Validate and set parameters
+    env = validate_environment(options[:env])
+    target = validate_target(options[:target])
+    use_match = options[:use_match] || false
+    
+    add_to_recap("🚀 Starting deployment for environment: #{env.upcase}, target: #{target.upcase}")
+    
+    # Set environment configuration
+    setup_environment(env)
+    
+    # Find version commit and generate changelog
+    version_commit = find_version_commit()
+    changelog = get_changelog(version_commit)
+    version_number = extract_version_number()
+    
+    add_to_recap("📝 Changelog generated from version commit: #{version_commit[0..7]}", "SUCCESS")
+
+    # Generate dart code and setup fvm
+    fvm_version = options[:fvm] || "3.24.5"
+    generate(fvm_version: fvm_version)
+
+    add_to_recap("📝 flutter code generated", "SUCCESS")
+
+    build_number = next_build_number()
+    add_to_recap("🔢 Build number determined: #{build_number}")
+
+    # Run tests
+    run_tests()
+
+    # Deploy based on target
+    case target
+    when "android"
+      deploy_android(build_number, changelog)
+    when "ios"
+      deploy_ios(version_number, build_number, changelog, use_match)
+    when "both"
+      deploy_android(build_number, changelog)
+      deploy_ios(version_number, build_number, changelog, use_match)
+    end
+    
+    add_to_recap("✅ DEPLOYMENT COMPLETED SUCCESSFULLY! 🎉", "SUCCESS")
+    
+    # Display the recap at the end
+    display_recap
+    
+  rescue => error
+    add_to_recap("❌ Deployment failed: #{error.message}", "ERROR")
+    display_recap
+    UI.user_error!("❌ Deployment failed: #{error.message}".red)
+  end
+end
+
+# ============================================================================
+# DEPLOYMENT HELPER FUNCTIONS
+# ============================================================================
+
+def validate_environment(env)
+  # TODO: Customize your valid environments here
+  valid_envs = ['int', 'qa', 'uat', 'mco', 'ppr', 'prod']
+  
+  if env.nil? || env.empty?
+    UI.user_error!("❌ Environment parameter is required. Valid values: #{valid_envs.join(', ')}")
+  end
+  
+  unless valid_envs.include?(env.downcase)
+    UI.user_error!("❌ Invalid environment '#{env}'. Valid values: #{valid_envs.join(', ')}")
+  end
+  
+  add_to_recap("🎯 Environment validated: #{env.downcase}")
+  env.downcase
+end
+
+def validate_target(target)
+  valid_targets = ['ios', 'android', 'both']
+  target = target&.downcase || 'both'
+  
+  unless valid_targets.include?(target)
+    UI.user_error!("❌ Invalid target '#{target}'. Valid values: #{valid_targets.join(', ')}")
+  end
+  
+  add_to_recap("🎯 Target platform validated: #{target}")
+  target
+end
+
+def setup_environment(env)
+  # Load environment-specific configuration
+  env_file = ".env.#{env}"
+  
+  if File.exist?(env_file)
+    Dotenv.overload env_file
+    add_to_recap("📁 Loaded environment configuration: #{env_file}", "SUCCESS")
+  else
+    add_to_recap("⚠️  Environment file #{env_file} not found, using default configuration", "WARNING")
+  end
+end
+
+# ============================================================================
+# VERSION AND CHANGELOG MANAGEMENT
+# ============================================================================
+
+def get_commits_output()
+  # TODO: Customize your version commit pattern if needed
+  # Get all commits in current branch with their messages
+  commits_output = sh("git log --oneline --grep=\"Version [0-9]\\+\\.[0-9]\\+\\.[0-9]\\+\" --basic-regexp", log: false)
+
+  if commits_output.strip.empty?
+    UI.user_error!("❌ No version commit found matching pattern 'Version X.X.X'")
+  end
+  return commits_output
+end
+
+def find_version_commit()
+  begin
+    # Get all commits in current branch with their messages
+    commits_output = get_commits_output()
+    
+    # Extract the first (most recent) commit hash
+    first_commit_line = commits_output.strip.split("\n").first
+    commit_hash = first_commit_line.split(' ').first
+    
+    add_to_recap("🔍 Found version commit: #{commit_hash}")
+    return commit_hash
+    
+  rescue => error
+    UI.user_error!("❌ Failed to find version commit: #{error.message}")
+  end
+end
+
+def extract_version_number()
+  begin
+    # Get all commits in current branch with their messages
+    commits_output = get_commits_output()
+
+    # Extract the first (most recent) commit message
+    first_commit_line = commits_output.strip.split("\n").first
+    commit_message = first_commit_line.split(' ', 2)[1]
+
+    # Extract version number using regex
+    version_match = commit_message.match(/Version (\d+\.\d+\.\d+)/)
+    if version_match
+      version_number = version_match[1]
+      add_to_recap("🏷️  Found version number: #{version_number}")
+      return version_number
+    else
+      UI.user_error!("❌ Could not extract version number from commit message: #{commit_message}")
+    end
+  rescue => error
+    UI.user_error!("❌ Failed to extract version number: #{error.message}")
+  end
+end
+
+def get_changelog(commit)
+  changelog = changelog_from_git_commits(
+    between: [commit, "HEAD"],
+  )
+  return changelog
+end
+
+# ============================================================================
+# PLATFORM-SPECIFIC DEPLOYMENT
+# ============================================================================
+
+def deploy_android(build_number, changelog)
+  add_to_recap("🤖 Starting Android Deployment")
+  
+  begin
+    add_to_recap("📱 Android build number: #{build_number}")
+    
+    # Build Android app
+    build_android_app(build_number)
+    
+    # Distribute to Firebase
+    distribute_android(changelog)
+    
+    add_to_recap("✅ Android deployment completed successfully!", "SUCCESS")
+    
+  rescue => error
+    add_to_recap("❌ Android deployment failed: #{error.message}", "ERROR")
+    UI.user_error!("❌ Android deployment failed: #{error.message}")
+  end
+end
+
+def deploy_ios(version_number, build_number, changelog, use_match = false)
+  add_to_recap("🍎 Starting iOS Deployment")
+  
+  begin
+    # Install CocoaPods dependencies
+    install_ios_pods()
+
+    add_to_recap("📱 iOS build number: #{build_number}")
+    
+    if use_match
+      # Use match for certificate management
+      add_to_recap("🔐 Using match for certificate management")
+      sync_certificates()
+    else
+      # Use traditional certificate verification
+      add_to_recap("🔍 Using traditional certificate verification")
+      check_certificates()
+      check_provisioning_profiles()
+    end
+
+    # Build iOS app
+    build_ios_app(build_number, version_number)
+
+    # Distribute to Firebase
+    distribute_ios(changelog)
+    
+    add_to_recap("✅ iOS deployment completed successfully!", "SUCCESS")
+    
+  rescue => error
+    UI.user_error!("❌ iOS deployment failed: #{error.message}")
+  end
+end
+
+# ============================================================================
+# BUILD FUNCTIONS
+# ============================================================================
+
+def run_tests()
+  add_to_recap("🧪 Running Flutter tests...")
+  
+  begin
+    sh('dart analyze')
+    flutter(args: %w(test --coverage))
+    add_to_recap("✅ All tests passed!", "SUCCESS")
+  rescue => error
+    UI.user_error!("❌ Tests failed: #{error.message}")
+  end
+end
+
+def build_android_app(build_number)
+  add_to_recap("🔨 Building Android app with build number: #{build_number}...")
+  
+  build_args = [
+    '--flavor', ENV['FLAVOR'],
+    '-t', ENV['FLUTTER_TARGET'],
+  ]
+  
+  flutter_build(
+    debug: ENV['FLUTTER_DEBUG'] || false,
+    build_number: build_number,
+    build_args: build_args,
+  )
+  
+  add_to_recap("✅ Android app build completed", "SUCCESS")
+end
+
+def build_ios_app(build_number, version_number)
+  add_to_recap("🔨 Building iOS app with build_number: #{build_number}...")
+  
+  flavor = ENV['FLAVOR']
+  scheme = ENV['SCHEME']
+  export_options = ENV['EXPORT_OPTIONS']
+  
+  # Update build and version numbers
+  increment_build_number(
+    build_number: build_number,
+    xcodeproj: "./ios/Runner.xcodeproj",
+  )
+  
+  if version_number
+    increment_version_number(
+      version_number: version_number,
+      xcodeproj: "./ios/Runner.xcodeproj",
+    )
+  end
+
+  gym(
+    configuration: scheme,
+    workspace: "./ios/Runner.xcworkspace",
+    scheme: scheme,
+    archive_path: "./build/ios/Runner.xcarchive",
+    output_name: "app-#{flavor}-release.ipa",
+    export_method: "enterprise", # TODO: Change to your export method (app-store, ad-hoc, enterprise, development)
+    export_options: export_options,
+  )
+  
+  add_to_recap("✅ iOS app build completed", "SUCCESS")
+end
+
+# ============================================================================
+# DISTRIBUTION FUNCTIONS
+# ============================================================================
+
+def distribute_android(changelog)
+  add_to_recap("📤 Distributing Android app to Firebase...")
+  
+  flavor = ENV['FLAVOR']
+  firebase_app = ENV['FIREBASE_APP']
+  
+  if firebase_app.nil? || firebase_app.empty?
+    UI.user_error!("❌ FIREBASE_APP environment variable not set for Android")
+  end
+
+  firebase_app_distribution(
+    app: firebase_app,
+    android_artifact_type: 'APK',
+    android_artifact_path: "./build/app/outputs/flutter-apk/app-#{flavor}-release.apk",
+    firebase_cli_token: ENV['FIREBASE_CLI_TOKEN'],
+    groups: ENV['TESTER_GROUPS'],
+    release_notes: changelog,
+  )
+  
+  add_to_recap("✅ Android app distributed to Firebase successfully", "SUCCESS")
+end
+
+def distribute_ios(changelog)
+  add_to_recap("📤 Distributing iOS app to Firebase...")
+  
+  firebase_app = ENV['FIREBASE_APP_IOS']
+  
+  if firebase_app.nil? || firebase_app.empty?
+    UI.user_error!("❌ FIREBASE_APP_IOS environment variable not set for iOS")
+  end
+
+  firebase_app_distribution(
+    app: firebase_app,
+    firebase_cli_token: ENV['FIREBASE_CLI_TOKEN'],
+    groups: ENV['TESTER_GROUPS'],
+    release_notes: changelog,
+  )
+  
+  add_to_recap("✅ iOS app distributed to Firebase successfully", "SUCCESS")
+end
+
+def install_ios_pods()
+  add_to_recap("📦 Installing CocoaPods dependencies...")
+
+  begin
+   cocoapods(
+     clean_install:true,
+     verbose:true,
+     repo_update:true,
+     podfile:"./ios/Podfile"
+   )
+  add_to_recap("✅ CocoaPods dependencies installed successfully!", "SUCCESS")
+  rescue => error
+    UI.user_error!("❌ Failed to install CocoaPods dependencies: #{error.message}")
+  end
+end
+
+desc "Generate Flutter code"
+lane :generate do |options|
+  fvm_version = options[:fvm_version]
+  setup_fvm(fvm_version)
+  flutter_generate()
+end
+
+# ============================================================================
+# CERTIFICATE MANAGEMENT
+# ============================================================================
+
+desc "Check iPhone Distribution certificate expiry"
+lane :check_certificates do
+  check_certificate_expiry
+end
+
+def check_certificate_expiry
+  require 'time'
+  
+  add_to_recap("🔑 Checking iPhone Distribution certificate expiry...")
+  
+  begin
+    # Find all code signing certificates
+    result = sh("security find-identity -v -p codesigning", log: false)
+    
+    if result.strip.empty?
+      UI.user_error!("❌ No code signing certificates found!")
+      return
+    end
+    
+    # Parse certificate identities and filter for iPhone Distribution only
+    certificates = []
+    result.each_line do |line|
+      # Extract certificate hash and name from output like:
+      # "  1) ABCD1234... "iPhone Distribution: Company Name (TEAM123)""
+      if match = line.match(/\s*\d+\)\s+([A-F0-9]+)\s+"([^"]+)"/)
+        hash = match[1]
+        name = match[2]
+        
+        # Filter for iPhone Distribution certificates only
+        if name.downcase.include?("iphone distribution")
+          certificates << { hash: hash, name: name }
+        end
+      end
+    end
+    
+    if certificates.empty?
+      UI.user_error!("❌ No iPhone Distribution certificates found!")
+      return
+    end
+    
+    UI.message("🔍 Found #{certificates.count} iPhone Distribution certificate(s)")
+    
+    certificates.each do |cert|
+      check_individual_certificate(cert[:hash], cert[:name])
+    end
+    
+  rescue => error
+    add_to_recap("❌ Failed to check certificates: #{error.message}", "ERROR")
+    UI.user_error!("❌ Failed to check certificates: #{error.message}")
+  end
+end
+
+def check_individual_certificate(cert_hash, cert_name)
+  begin
+    UI.message("📄 Checking certificate: #{cert_name}")
+    
+    # Get certificate details using the hash
+    cert_data = sh("security find-certificate -c '#{cert_name}' -p", log: false)
+    
+    if cert_data.strip.empty?
+      UI.error("❌ Could not retrieve certificate data for: #{cert_name}")
+      return
+    end
+    
+    # Save certificate to temporary file for parsing
+    temp_cert_file = "/tmp/temp_cert_#{cert_hash}.pem"
+    File.write(temp_cert_file, cert_data)
+    
+    # Extract certificate information using openssl
+    cert_info = sh("openssl x509 -in '#{temp_cert_file}' -noout -dates", log: false)
+    
+    # Parse the expiration date
+    expiry_match = cert_info.match(/notAfter=(.+)/)
+    if expiry_match
+      expiry_string = expiry_match[1].strip
+      # Parse the date (format: "Jan  1 12:00:00 2025 GMT")
+      expiration_date = Time.parse(expiry_string)
+      
+      UI.message("🗓️  Certificate expiration: #{expiration_date}")
+      
+      # Calculate days until expiry
+      days_until_expiry = ((expiration_date - Time.now) / (24 * 60 * 60)).to_i
+      
+      if days_until_expiry < 0
+        UI.user_error!("❌ #{cert_name} - EXPIRED #{days_until_expiry.abs} days ago".red)
+      elsif days_until_expiry <= 30
+        UI.user_error!("⚠️  #{cert_name} - Expires in #{days_until_expiry} days".yellow)
+      elsif days_until_expiry <= 90
+        UI.user_error!("⚠️  #{cert_name} - Expires in #{days_until_expiry} days (less than 3 months)".yellow)
+      else
+        add_to_recap("✅ #{cert_name} - Expires in #{days_until_expiry} days", "SUCCESS")
+      end
+    else
+      add_to_recap("❌ Could not parse expiration date for: #{cert_name}", "ERROR")
+    end
+    
+  rescue => error
+    add_to_recap("❌ Error checking certificate #{cert_name}: #{error.message}", "ERROR")
+  ensure
+    # Cleanup temporary certificate file
+    if defined?(temp_cert_file) && File.exist?(temp_cert_file)
+      File.delete(temp_cert_file)
+    end
+  end
+end
+
+# ============================================================================
+# MATCH CERTIFICATE MANAGEMENT
+# ============================================================================
+
+desc "Setup certificates and provisioning profiles using match"
+desc "Parameters:"
+desc "- type: Certificate type (development, adhoc, appstore, enterprise) - OPTIONAL (default: enterprise)"
+desc "- readonly: Read-only mode, don't create new certificates - OPTIONAL (default: false)"
+lane :setup_certificates do |options|
+  begin
+    cert_type = options[:type] || "enterprise" # TODO: Change default to your preferred type
+    readonly = options[:readonly] || false
+    
+    add_to_recap("🔐 Setting up certificates using match...")
+    add_to_recap("📋 Certificate type: #{cert_type}")
+    add_to_recap("👁️  Read-only mode: #{readonly}")
+    
+    # Validate certificate type
+    valid_types = ['development', 'adhoc', 'appstore', 'enterprise']
+    unless valid_types.include?(cert_type)
+      UI.user_error!("❌ Invalid certificate type '#{cert_type}'. Valid values: #{valid_types.join(', ')}")
+    end
+    
+    match(
+      type: cert_type,
+      app_identifier: ENV['MATCH_APP_IDENTIFIER'] || CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      git_url: ENV['MATCH_GIT_URL'],
+      git_branch: ENV['MATCH_GIT_BRANCH'] || cert_type,
+      storage_mode: ENV['MATCH_STORAGE_MODE'] || "git",
+      readonly: readonly,
+      keychain_name: ENV['MATCH_KEYCHAIN_NAME'] || "login",
+      keychain_password: ENV['MATCH_KEYCHAIN_PASSWORD'],
+      force_for_new_devices: true
+    )
+    
+    add_to_recap("✅ Certificates and provisioning profiles set up successfully!", "SUCCESS")
+    
+  rescue => error
+    add_to_recap("❌ Failed to setup certificates: #{error.message}", "ERROR")
+    UI.user_error!("❌ Failed to setup certificates: #{error.message}")
+  end
+end
+
+desc "Setup certificates for all certificate types"
+lane :setup_all_certificates do
+  begin
+    add_to_recap("🔐 Setting up all certificate types...")
+    
+    # Setup development certificates
+    setup_certificates(type: "development", readonly: false)
+    
+    # Setup distribution certificates (change to appstore if not using enterprise)
+    setup_certificates(type: "enterprise", readonly: false) # TODO: Change to 'appstore' if needed
+    
+    add_to_recap("✅ All certificates set up successfully!", "SUCCESS")
+    
+  rescue => error
+    add_to_recap("❌ Failed to setup all certificates: #{error.message}", "ERROR")
+    UI.user_error!("❌ Failed to setup all certificates: #{error.message}")
+  end
+end
+
+desc "Sync certificates in read-only mode (for CI/CD)"
+lane :sync_certificates do |options|
+  cert_type = options[:type] || "enterprise" # TODO: Change default to your preferred type
+  
+  begin
+    add_to_recap("🔄 Syncing certificates in read-only mode...")
+    
+    setup_certificates(type: cert_type, readonly: true)
+    
+    add_to_recap("✅ Certificates synced successfully!", "SUCCESS")
+    
+  rescue => error
+    add_to_recap("❌ Failed to sync certificates: #{error.message}", "ERROR")
+    UI.user_error!("❌ Failed to sync certificates: #{error.message}")
+  end
+end
+
+# ============================================================================
+# PROVISIONING PROFILE MANAGEMENT
+# ============================================================================
+
+desc "Check provisioning profile expiry for all environments"
+lane :check_provisioning_profiles do
+  check_profile_expiry
+end
+
+def get_profile_name_from_export_options(export_options_path)
+  unless File.exist?(export_options_path)
+    UI.user_error!("ExportOptions.plist not found at #{export_options_path}")
+  end
+
+  export_options = Plist.parse_xml(export_options_path)
+  provisioning_profiles = export_options['provisioningProfiles']
+  if provisioning_profiles.nil? || provisioning_profiles.empty?
+    UI.user_error!("No provisioningProfiles found in ExportOptions.plist")
+  end
+
+  # Get the first profile name (assuming only one)
+  profile_name = provisioning_profiles.values.first
+  return profile_name
+end
+
+def get_bundle_identifier_from_export_options(export_options_path)
+  unless File.exist?(export_options_path)
+    UI.user_error!("ExportOptions.plist not found at #{export_options_path}")
+  end
+  export_options = Plist.parse_xml(export_options_path)
+  provisioning_profiles = export_options['provisioningProfiles']
+  
+  if provisioning_profiles.nil? || provisioning_profiles.empty?
+    UI.user_error!("No provisioningProfiles found in ExportOptions.plist")
+  end
+  
+  # Get the first bundle identifier (the key in provisioningProfiles)
+  bundle_identifier = provisioning_profiles.keys.first
+  return bundle_identifier
+end
+
+def check_profile_expiry
+  require 'plist'
+  require 'time'
+
+  export_options = "../#{ENV['EXPORT_OPTIONS']}"
+  profile_name = get_profile_name_from_export_options(export_options)
+  bundle_identifier = get_bundle_identifier_from_export_options(export_options)
+  UI.message("🔑 Bundle identifier: #{bundle_identifier}")
+  UI.message("🔑 Profile name: #{profile_name}")
+  download_provisioning_profile(bundle_identifier, profile_name)
+  
+  profile_path = "../#{profile_name}.mobileprovision"
+  UI.message("📄 Provisioning profile downloaded: #{profile_path}")
+  
+  begin
+    # Use the actual downloaded profile path
+    xml = `security cms -D -i "#{profile_path}"`
+    plist = Plist.parse_xml(xml)
+    expiration_date = plist['ExpirationDate']
+    UI.message("🗓️  Expiration date: #{expiration_date}")
+    
+    days_until_expiry = (expiration_date - Date.today).to_i
+
+    if days_until_expiry < 0
+      UI.user_error!("❌ - EXPIRED #{days_until_expiry.abs} days ago".red)
+    elsif days_until_expiry <= 90
+      UI.user_error!("⚠️ - Expires in #{days_until_expiry} days".yellow)
+    else
+      add_to_recap("✅ Provisioning profile is valid for more than 3 months.", "SUCCESS")
+    end
+  ensure
+    # Always cleanup the downloaded provisioning profile
+    if File.exist?(profile_path)
+      File.delete(profile_path)
+      UI.message("🗑️  Cleaned up downloaded provisioning profile: #{profile_path}")
+    end
+  end
+end
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def next_build_number()
+  firebase_app = ENV['FIREBASE_APP']
+  firebase_app_ios = ENV['FIREBASE_APP_IOS']
+  build_number = nil
+
+  if firebase_app
+    latest_release_android = firebase_app_distribution_get_latest_release(
+      app: firebase_app,
+      firebase_cli_token: ENV['FIREBASE_CLI_TOKEN'],
+    )
+  end
+
+  if firebase_app_ios
+    latest_release_ios = firebase_app_distribution_get_latest_release(
+      app: firebase_app_ios,
+      firebase_cli_token: ENV['FIREBASE_CLI_TOKEN'],
+    )
+  end
+
+  android_build_number = latest_release_android && latest_release_android[:buildVersion].to_i
+  ios_build_number = latest_release_ios && latest_release_ios[:buildVersion].to_i
+
+  build_number = [android_build_number, ios_build_number].max
+
+  calculated_build_number = (build_number && build_number + 1) || 1
+  add_to_recap("🔢 Next build number calculated: #{calculated_build_number}")
+  
+  return calculated_build_number
+end
+
+def setup_fvm(fvm_version)
+  # TODO: Customize your FVM installation path if needed
+  fvm_path = File.expand_path("~/fvm/versions/#{fvm_version}/bin/flutter")
+  UI.message("🔍 FVM path: #{fvm_path}")
+
+  # Check if FVM is installed
+  unless File.exist?(fvm_path)
+    UI.user_error!("FVM is not installed or the specified version is not configured")
+  end
+
+  # Set environment variable to use FVM
+  ENV["FLUTTER_ROOT"] = File.dirname(File.dirname(fvm_path))
+end
+
+def download_provisioning_profile(app_identifier, profile_name)
+  api_key = app_store_connect_api_key(
+    key_id: ENV['APP_STORE_CONNECT_API_KEY_ID'],
+    issuer_id: ENV['APP_STORE_CONNECT_ISSUER_ID'],
+    key_filepath: ENV['APP_STORE_CONNECT_API_KEY_CONTENT'],
+    duration: 1200,
+    in_house: true, # TODO: Set to false if not using enterprise certificates
+  )
+  
+  profile_path = sigh(
+    app_identifier: app_identifier,
+    api_key: api_key,
+    skip_install: true,
+    filename: "#{profile_name}.mobileprovision",
+  )
+  UI.message("📄 Provisioning profile downloaded: #{profile_path}")
+
+  return profile_path
+end
+
+# ============================================================================
+# ADDITIONAL LANES (CUSTOMIZE AS NEEDED)
+# ============================================================================
+
+desc "Run only tests without deployment"
+lane :test do
+  run_tests()
+end
+
+desc "Check all certificates and profiles"
+desc "Parameters:"
+desc "- use_match: Also setup certificates using match - OPTIONAL (default: false)"
+lane :check_all do |options|
+  use_match = options[:use_match] || false
+  
+  # Always check existing certificates and profiles
+  check_certificates()
+  check_provisioning_profiles()
+  
+  # Optionally setup certificates using match
+  if use_match
+    setup_all_certificates()
+  end
+end
+
+desc "Clean and rebuild dependencies"
+lane :clean do
+  flutter(args: %w(clean))
+  flutter(args: %w(pub get))
+  install_ios_pods()
+end
+
+# ============================================================================
+# TEMPLATE CONFIGURATION NOTES
+# ============================================================================
+# 
+# TO USE THIS TEMPLATE:
+# 
+# 1. Copy this file to your project as `Fastfile`
+# 2. Create the following environment files:
+#    - .env.secret (with sensitive data)
+#    - .env.int, .env.qa, .env.uat, .env.mco, .env.ppr, .env.prod
+# 
+# 3. Required environment variables in your .env files:
+#    - FLAVOR: Android flavor name
+#    - FLUTTER_TARGET: Target file (e.g., lib/main.dart)
+#    - SCHEME: iOS scheme name
+#    - EXPORT_OPTIONS: Path to ExportOptions.plist
+#    - FIREBASE_APP: Firebase App ID for Android
+#    - FIREBASE_APP_IOS: Firebase App ID for iOS
+#    - FIREBASE_CLI_TOKEN: Firebase CLI token
+#    - TESTER_GROUPS: Firebase App Distribution tester groups
+#    - APP_STORE_CONNECT_API_KEY_ID: App Store Connect API key ID
+#    - APP_STORE_CONNECT_ISSUER_ID: App Store Connect issuer ID
+#    - APP_STORE_CONNECT_API_KEY_CONTENT: Path to API key file
+#    - MATCH_GIT_URL: Git repository URL for match certificates storage
+#    - MATCH_APP_IDENTIFIER: App identifier for match (optional, uses Appfile if not set)
+#    - MATCH_GIT_BRANCH: Git branch for match storage (optional, defaults to cert type)
+#    - MATCH_STORAGE_MODE: Storage mode for match (optional, defaults to git)
+#    - MATCH_KEYCHAIN_NAME: Keychain name for match (optional, defaults to login)
+#    - MATCH_KEYCHAIN_PASSWORD: Keychain password for match (optional)
+# 
+# 4. Create your Pluginfile with required gems:
+#    gem 'fastlane-plugin-flutter'
+#    gem 'fastlane-plugin-firebase_app_distribution'
+# 
+# 5. Create your Appfile with package name:
+#    package_name("com.yourcompany.yourapp")
+# 
+# 6. Customize the TODO comments throughout this file for your specific needs
+# 
+# USAGE EXAMPLES:
+#   fastlane deployment env:int target:android
+#   fastlane deployment env:prod target:both fvm:3.24.7
+#   fastlane deployment env:prod target:ios use_match:true
+#   fastlane test
+#   fastlane check_all
+#   fastlane check_all use_match:true
+#   fastlane setup_certificates type:appstore
+#   fastlane setup_all_certificates
+#   fastlane sync_certificates type:enterprise
+#   fastlane clean
+# 
+# ============================================================================

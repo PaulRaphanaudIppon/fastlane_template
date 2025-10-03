@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- APP STORE DISTRIBUTION -->
+	<key>method</key>
+	<string>app-store</string>
+	
+	<key>teamID</key>
+	<string>TEAM123456</string>
+	
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.yourcompany.yourapp</key>
+		<string>YourApp App Store Distribution</string>
+	</dict>
+	
+	<!-- App Store recommended settings -->
+	<key>compileBitcode</key>
+	<true/>
+	
+	<key>uploadSymbols</key>
+	<true/>
+	
+	<key>uploadBitcode</key>
+	<true/>
+	
+	<key>stripSwiftSymbols</key>
+	<true/>
+	
+	<key>thinning</key>
+	<string>&lt;thin-for-all-supported-variants&gt;</string>
+	
+	<key>signingStyle</key>
+	<string>manual</string>
+	
+	<key>signingCertificate</key>
+	<string>iPhone Distribution</string>
+	
+</dict>
+</plist>

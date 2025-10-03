@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- AD-HOC DISTRIBUTION -->
+	<key>method</key>
+	<string>ad-hoc</string>
+	
+	<key>teamID</key>
+	<string>TEAM123456</string>
+	
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.yourcompany.yourapp</key>
+		<string>YourApp Ad Hoc Distribution</string>
+	</dict>
+	
+	<!-- Ad-hoc recommended settings -->
+	<key>compileBitcode</key>
+	<true/>
+	
+	<key>uploadSymbols</key>
+	<false/>
+	
+	<key>uploadBitcode</key>
+	<false/>
+	
+	<key>stripSwiftSymbols</key>
+	<true/>
+	
+	<key>thinning</key>
+	<string>&lt;none&gt;</string>
+	
+	<key>signingStyle</key>
+	<string>manual</string>
+	
+	<key>signingCertificate</key>
+	<string>iPhone Distribution</string>
+	
+</dict>
+</plist>

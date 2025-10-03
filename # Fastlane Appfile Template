@@ -1,0 +1,16 @@
+# Fastlane Appfile Template
+# 
+# This file defines the app identifier for your project
+# Replace with your actual app package name/bundle identifier
+
+# Android package name
+package_name("com.yourcompany.yourapp")
+
+# Uncomment and customize for iOS if needed
+# app_identifier("com.yourcompany.yourapp") # The bundle identifier of your app
+# apple_id("your.email@example.com") # Your Apple ID email address
+# itc_team_id("123456789") # App Store Connect Team ID
+# team_id("ABCD123456") # Developer Portal Team ID
+
+# For multiple targets/flavors, you can use environment variables:
+# package_name(ENV['PACKAGE_NAME'] || "com.yourcompany.yourapp.debug")
